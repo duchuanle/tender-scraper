@@ -1,0 +1,13 @@
+services:
+  scraper-function:
+    build: .
+    image: scraper-function:latest
+    container_name: scraper-function
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${HOST_PORT:-8080}:80"
+    volumes:
+      # Function keys (see secrets/host.json.example). Read-write so the host
+      # can create it on first start if the file is missing.
+      - ./secrets:/azure-functions-host/Secrets

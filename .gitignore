@@ -1,0 +1,10 @@
+.python_packages/
+.venv/
+__pycache__/
+.pytest_cache/
+local.settings.json
+downloads/
+*.py[cod]
+.env
+secrets/*
+!secrets/host.json.example

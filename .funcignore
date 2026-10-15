@@ -1,0 +1,17 @@
+.git*
+.venv/
+__pycache__/
+.pytest_cache/
+local.settings.json
+local.settings.json.example
+requirements-dev.txt
+tests/
+scripts/
+*.md
+downloads/
+.env
+.env.*
+secrets/
+Dockerfile
+.dockerignore
+docker-compose.yml
