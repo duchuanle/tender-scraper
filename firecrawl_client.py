@@ -1,4 +1,4 @@
-"""Small REST client and input validation for the Firecrawl Azure Function."""
+"""Small REST client and input validation for the tender scraper service."""
 
 from __future__ import annotations
 
@@ -174,6 +174,9 @@ def build_crawl_payload(body: Any) -> dict[str, Any]:
         raise RequestValidationError("scrapeOptions must be a JSON object")
 
     scrape_options = dict(payload["scrapeOptions"])
+    # Firecrawl serves cached pages by default, but buy NSW attachment links are
+    # S3 pre-signed URLs that expire after an hour, so always scrape fresh.
+    scrape_options.setdefault("maxAge", 0)
     formats = scrape_options.get("formats", [])
     if not isinstance(formats, list):
         raise RequestValidationError("scrapeOptions.formats must be an array")
@@ -269,7 +272,7 @@ class FirecrawlClient:
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "User-Agent": "azure-firecrawl-function/1.0",
+            "User-Agent": "tender-scraper/1.0",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

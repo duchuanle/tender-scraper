@@ -11,6 +11,8 @@ from urllib.parse import quote
 
 import requests
 
+from settings import boolean_setting
+
 
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
 TOKEN_URL = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token"
@@ -28,12 +30,10 @@ class OneDriveError(RuntimeError):
 
 
 def _enabled() -> bool:
-    value = os.getenv("ONEDRIVE_ENABLED", "false").strip().lower()
-    if value in {"true", "1", "yes"}:
-        return True
-    if value in {"false", "0", "no", ""}:
-        return False
-    raise OneDriveError("ONEDRIVE_ENABLED must be true or false")
+    try:
+        return boolean_setting("ONEDRIVE_ENABLED")
+    except ValueError as exc:
+        raise OneDriveError(str(exc)) from exc
 
 
 def _timeout_seconds() -> int:

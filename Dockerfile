@@ -1,21 +1,34 @@
-# Azure Functions host + Python 3.12 worker. Runs function_app.py unchanged,
-# including function-key authorization, on any Docker host (e.g. a VPS).
-FROM mcr.microsoft.com/azure-functions/python:4-python3.12
+# Generic container for the tender scraper: runs on any Docker host
+# (VPS, Azure Container Apps / App Service, AWS, GCP, ...).
+FROM python:3.12-slim
 
-ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
-    AzureFunctionsJobHost__Logging__Console__IsEnabled=true \
-    AzureWebJobsSecretStorageType=files \
-    FUNCTIONS_WORKER_RUNTIME=python \
-    DOWNLOAD_DIR=/tmp/downloads \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PORT=8000 \
+    DOWNLOAD_DIR=/data/downloads \
+    FORWARDED_ALLOW_IPS=*
 
-COPY requirements.txt /
-RUN pip install -r /requirements.txt
+WORKDIR /app
 
-COPY host.json function_app.py firecrawl_client.py attachment_links.py \
-     attachment_downloader.py tender_artifacts.py onedrive_client.py \
-     /home/site/wwwroot/
+COPY requirements.txt .
+RUN pip install -r requirements.txt
 
-# The Functions host listens on port 80 inside the container.
-EXPOSE 80
+COPY app.py firecrawl_client.py attachment_links.py attachment_downloader.py \
+     tender_artifacts.py onedrive_client.py settings.py ./
+
+RUN useradd --create-home --uid 10001 app \
+    && mkdir -p /data/downloads \
+    && chown -R app:app /data
+USER app
+
+VOLUME ["/data"]
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import os, urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ.get(\"PORT\", \"8000\")}/healthz', timeout=4)"
+
+# --proxy-headers takes the scheme (X-Forwarded-Proto) and client IP from a reverse proxy;
+# the host in statusUrl/next comes from the Host header the proxy forwards.
+CMD ["sh", "-c", "exec uvicorn app:app --host 0.0.0.0 --port ${PORT} --proxy-headers --timeout-keep-alive 75"]

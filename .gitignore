@@ -1,10 +1,15 @@
-.python_packages/
 .venv/
 __pycache__/
-.pytest_cache/
-local.settings.json
-downloads/
 *.py[cod]
+.pytest_cache/
 .env
-secrets/*
-!secrets/host.json.example
+downloads/
+data/
+# Legacy Azure Functions settings file; may still exist locally with secrets.
+local.settings.json
+.env.*
+!.env.example
+# Planning documents (specs, plans, brainstorming) stay local.
+docs/superpowers/
+*-plan.md
+*-spec.md

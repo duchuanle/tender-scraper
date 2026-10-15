@@ -1,4 +1,4 @@
-"""One-time personal OneDrive device login for the Azure Function POC."""
+"""One-time personal OneDrive device login for the optional upload."""
 
 from __future__ import annotations
 

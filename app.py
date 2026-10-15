@@ -1,15 +1,19 @@
-"""Azure Functions HTTP facade for synchronous Firecrawl workflows."""
+"""HTTP service (FastAPI) for synchronous Firecrawl tender workflows."""
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
+import re
 import time
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
-import azure.functions as func
+from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 
 from attachment_downloader import download_attachments
 from attachment_links import extract_attachment_links
@@ -26,6 +30,7 @@ from firecrawl_client import (
     validate_job_id,
 )
 from onedrive_client import upload_job_outputs
+from settings import boolean_setting
 from tender_artifacts import (
     extract_tender_summary,
     save_crawl_artifacts,
@@ -33,9 +38,83 @@ from tender_artifacts import (
 )
 
 
-app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
+def _configure_logging() -> None:
+    requested = os.getenv("LOG_LEVEL", "INFO").strip().upper() or "INFO"
+    level = logging.getLevelName(requested)
+    valid = isinstance(level, int)
+    logging.basicConfig(
+        level=level if valid else logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    if not valid:
+        logging.warning("Unknown LOG_LEVEL %r; using INFO", requested)
+
+
+class RedactApiKeyFilter(logging.Filter):
+    """Blank out ?code=<key> in uvicorn access-log lines."""
+
+    PATTERN = re.compile(r"([?&]code=)[^&\s]*", re.IGNORECASE)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                self.PATTERN.sub(r"\1[redacted]", arg) if isinstance(arg, str) else arg
+                for arg in record.args
+            )
+        return True
+
+
+_configure_logging()
+logging.getLogger("uvicorn.access").addFilter(RedactApiKeyFilter())
+
+app = FastAPI(
+    title="Tender Scraper",
+    description=(
+        "Resolves a tender link, crawls it with Firecrawl, extracts the tender "
+        "summary, downloads attachments and optionally uploads them to OneDrive."
+    ),
+    version="1.0.0",
+)
 
 TERMINAL_CRAWL_STATUSES = {"completed", "failed", "cancelled"}
+# x-functions-key and ?code= keep callers written for Azure Functions working.
+API_KEY_HEADERS = ("x-api-key", "x-functions-key")
+API_KEY_QUERY_PARAMETER = "code"
+CRAWL_REQUEST_SCHEMA = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "required": ["url"],
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "Tender page, Outlook Safe Link or buy NSW tracking URL.",
+                        },
+                        "limit": {"type": "integer", "minimum": 1, "default": 1},
+                    },
+                }
+            }
+        },
+    }
+}
+
+
+class CompatJSONResponse(JSONResponse):
+    """JSON response that tolerates NaN/Infinity from upstream data.
+
+    Starlette's JSONResponse refuses them, which would turn an already
+    processed crawl into a 500.
+    """
+
+    def render(self, content: Any) -> bytes:
+        return json.dumps(content, ensure_ascii=False).encode("utf-8")
+
+
+class AuthenticationError(RuntimeError):
+    """Raised when a request does not carry a valid API key."""
 
 
 class CrawlPollingTimeout(RuntimeError):
@@ -108,19 +187,32 @@ def json_response(
     payload: Any,
     status_code: int,
     headers: dict[str, str] | None = None,
-) -> func.HttpResponse:
-    return func.HttpResponse(
-        body=json.dumps(payload, ensure_ascii=False),
-        status_code=status_code,
-        headers=headers,
-        mimetype="application/json",
-        charset="utf-8",
-    )
+) -> JSONResponse:
+    return CompatJSONResponse(content=payload, status_code=status_code, headers=headers)
 
 
-def clean_request_url(req: func.HttpRequest) -> str:
-    parsed = urlsplit(req.url)
+def clean_request_url(request_url: str) -> str:
+    parsed = urlsplit(request_url)
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
+
+
+def authenticate(headers: Mapping[str, str], query: Mapping[str, str]) -> None:
+    """Require one of API_KEYS unless API_AUTH_DISABLED is explicitly set."""
+    try:
+        auth_disabled = boolean_setting("API_AUTH_DISABLED")
+    except ValueError as exc:
+        raise ConfigurationError(str(exc)) from exc
+    if auth_disabled:
+        return
+    keys = [key.strip() for key in os.getenv("API_KEYS", "").split(",") if key.strip()]
+    if not keys:
+        raise ConfigurationError("API_KEYS must be set unless API_AUTH_DISABLED=true")
+    supplied = [headers.get(name) for name in API_KEY_HEADERS]
+    supplied.append(query.get(API_KEY_QUERY_PARAMETER))
+    for candidate in filter(None, supplied):
+        if any(hmac.compare_digest(candidate.encode(), key.encode()) for key in keys):
+            return
+    raise AuthenticationError("Missing or invalid API key")
 
 
 def boolean_query_parameter(value: str | None, name: str) -> bool:
@@ -134,7 +226,19 @@ def boolean_query_parameter(value: str | None, name: str) -> bool:
     raise RequestValidationError(f"{name} must be true or false")
 
 
-def error_response(exc: Exception) -> func.HttpResponse:
+def error_response(exc: Exception) -> JSONResponse:
+    if isinstance(exc, AuthenticationError):
+        return json_response(
+            {
+                "success": False,
+                "operation": "crawl",
+                "status": "error",
+                "errorCode": "UNAUTHORIZED",
+                "error": str(exc),
+                "retryable": False,
+            },
+            401,
+        )
     if isinstance(exc, RequestValidationError):
         return json_response(
             {
@@ -148,7 +252,7 @@ def error_response(exc: Exception) -> func.HttpResponse:
             400,
         )
     if isinstance(exc, ConfigurationError):
-        logging.error("Azure Function configuration error: %s", exc)
+        logging.error("Service configuration error: %s", exc)
         return json_response(
             {
                 "success": False,
@@ -243,7 +347,7 @@ def error_response(exc: Exception) -> func.HttpResponse:
 
 
 def build_crawl_result(
-    req: func.HttpRequest,
+    request_url: str,
     client: FirecrawlClient,
     job_id: str,
     result: dict[str, Any],
@@ -346,7 +450,7 @@ def build_crawl_result(
 
     messages = {
         "completed": "Crawl completed and outputs were processed.",
-        "failed": "Crawl failed. Review the returned error and Azure logs.",
+        "failed": "Crawl failed. Review the returned error and service logs.",
         "cancelled": "Crawl was cancelled.",
     }
     response["message"] = messages.get(status, "Crawl is still in progress.")
@@ -362,7 +466,7 @@ def build_crawl_result(
             local_query["pageLimit"] = next_query["limit"][0]
         if include_data:
             local_query["includeData"] = "true"
-        next_url = clean_request_url(req)
+        next_url = clean_request_url(request_url)
         if local_query:
             next_url = f"{next_url}?{urlencode(local_query)}"
         response["next"] = next_url
@@ -370,13 +474,31 @@ def build_crawl_result(
     return response
 
 
-@app.function_name(name="StartFirecrawl")
-@app.route(route="crawl", methods=["POST"])
-def start_crawl(req: func.HttpRequest) -> func.HttpResponse:
+@app.get("/healthz", include_in_schema=False)
+async def healthz() -> dict[str, str]:
+    """Unauthenticated liveness probe for Docker and load balancers.
+
+    async so it never waits for a thread-pool slot held by a long crawl.
+    """
+    return {"status": "ok"}
+
+
+@app.post("/api/crawl", openapi_extra=CRAWL_REQUEST_SCHEMA)
+async def start_crawl(request: Request) -> JSONResponse:
     """Start Firecrawl, wait for it to finish, then download attachments."""
     try:
+        authenticate(request.headers, request.query_params)
+        raw_body = await request.body()
+    except Exception as exc:  # Converted to a stable HTTP contract in one place.
+        return error_response(exc)
+    # The workflow blocks on HTTP calls and polling, so keep it off the event loop.
+    return await run_in_threadpool(run_crawl, str(request.url), raw_body)
+
+
+def run_crawl(request_url: str, raw_body: bytes) -> JSONResponse:
+    try:
         try:
-            body = req.get_json()
+            body = json.loads(raw_body)
         except ValueError as exc:
             raise RequestValidationError("request body must contain valid JSON") from exc
 
@@ -394,13 +516,13 @@ def start_crawl(req: func.HttpRequest) -> func.HttpResponse:
         logging.info("Started Firecrawl crawl job %s; polling internally", job_id)
         result, polling_attempts, polling_elapsed = wait_for_crawl(client, job_id)
         response = build_crawl_result(
-            req,
+            request_url,
             client,
             job_id,
             result,
             target_url=resolved_url,
         )
-        response["statusUrl"] = f"{clean_request_url(req)}/{job_id}"
+        response["statusUrl"] = f"{clean_request_url(request_url)}/{job_id}"
         response["inputUrl"] = input_url
         response["resolvedUrl"] = resolved_url
         response["polling"] = {
@@ -418,18 +540,19 @@ def start_crawl(req: func.HttpRequest) -> func.HttpResponse:
         return error_response(exc)
 
 
-@app.function_name(name="GetFirecrawlStatus")
-@app.route(route="crawl/{job_id}", methods=["GET"])
-def get_crawl_status(req: func.HttpRequest) -> func.HttpResponse:
+@app.get("/api/crawl/{job_id}")
+def get_crawl_status(job_id: str, request: Request) -> JSONResponse:
     """Poll crawl progress and return discovered attachment links."""
     try:
-        job_id = validate_job_id(req.route_params.get("job_id"))
-        skip = parse_page_parameter(req.params.get("skip"), "skip", 0, 10_000_000)
+        authenticate(request.headers, request.query_params)
+        job_id = validate_job_id(job_id)
+        params = request.query_params
+        skip = parse_page_parameter(params.get("skip"), "skip", 0, 10_000_000)
         page_limit = parse_page_parameter(
-            req.params.get("pageLimit"), "pageLimit", 1, 10_000
+            params.get("pageLimit"), "pageLimit", 1, 10_000
         )
         include_data = boolean_query_parameter(
-            req.params.get("includeData"), "includeData"
+            params.get("includeData"), "includeData"
         )
 
         client = FirecrawlClient.from_environment()
@@ -439,7 +562,7 @@ def get_crawl_status(req: func.HttpRequest) -> func.HttpResponse:
             page_limit=page_limit,
         )
         response = build_crawl_result(
-            req,
+            str(request.url),
             client,
             job_id,
             result,

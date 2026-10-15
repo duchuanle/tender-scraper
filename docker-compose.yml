@@ -1,13 +1,17 @@
 services:
-  scraper-function:
+  tender-scraper:
     build: .
-    image: scraper-function:latest
-    container_name: scraper-function
+    image: tender-scraper:latest
+    container_name: tender-scraper
     restart: unless-stopped
     env_file: .env
     ports:
-      - "${HOST_PORT:-8080}:80"
+      # Loopback only by default: a reverse proxy on the same host provides TLS.
+      # Set BIND_ADDRESS=0.0.0.0 to expose the port directly.
+      - "${BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-8080}:8000"
     volumes:
-      # Function keys (see secrets/host.json.example). Read-write so the host
-      # can create it on first start if the file is missing.
-      - ./secrets:/azure-functions-host/Secrets
+      # Persists job folders (attachments, summary.json, website.html).
+      - scraper-data:/data
+
+volumes:
+  scraper-data:

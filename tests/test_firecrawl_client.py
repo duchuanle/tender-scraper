@@ -23,6 +23,7 @@ def test_build_payload_applies_defaults(monkeypatch):
     assert payload["url"] == "https://example.com/docs"
     assert payload["limit"] == 1
     assert payload["scrapeOptions"]["onlyMainContent"] is True
+    assert payload["scrapeOptions"]["maxAge"] == 0
     formats = payload["scrapeOptions"]["formats"]
     assert formats[:2] == ["links", "rawHtml"]
     assert formats[2]["type"] == "json"
@@ -56,6 +57,15 @@ def test_build_payload_preserves_firecrawl_options(monkeypatch):
     formats = payload["scrapeOptions"]["formats"]
     assert formats[:3] == ["html", "links", "rawHtml"]
     assert formats[3]["type"] == "json"
+    assert payload["scrapeOptions"]["maxAge"] == 0
+
+
+def test_build_payload_keeps_caller_cache_age():
+    payload = build_crawl_payload(
+        {"url": "https://example.com", "scrapeOptions": {"maxAge": 60000}}
+    )
+
+    assert payload["scrapeOptions"]["maxAge"] == 60000
 
 
 @pytest.mark.parametrize(
@@ -119,7 +129,7 @@ def test_start_crawl_sends_bearer_token():
         headers={
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "User-Agent": "azure-firecrawl-function/1.0",
+            "User-Agent": "tender-scraper/1.0",
             "Authorization": "Bearer secret",
         },
         timeout=30,
