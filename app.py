@@ -6,7 +6,6 @@ import hmac
 import json
 import logging
 import os
-import re
 import time
 from typing import Any, Mapping
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
@@ -50,22 +49,7 @@ def _configure_logging() -> None:
         logging.warning("Unknown LOG_LEVEL %r; using INFO", requested)
 
 
-class RedactApiKeyFilter(logging.Filter):
-    """Blank out ?code=<key> in uvicorn access-log lines."""
-
-    PATTERN = re.compile(r"([?&]code=)[^&\s]*", re.IGNORECASE)
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        if isinstance(record.args, tuple):
-            record.args = tuple(
-                self.PATTERN.sub(r"\1[redacted]", arg) if isinstance(arg, str) else arg
-                for arg in record.args
-            )
-        return True
-
-
 _configure_logging()
-logging.getLogger("uvicorn.access").addFilter(RedactApiKeyFilter())
 
 app = FastAPI(
     title="Tender Scraper",
@@ -77,9 +61,7 @@ app = FastAPI(
 )
 
 TERMINAL_CRAWL_STATUSES = {"completed", "failed", "cancelled"}
-# x-functions-key and ?code= keep callers written for Azure Functions working.
-API_KEY_HEADERS = ("x-api-key", "x-functions-key")
-API_KEY_QUERY_PARAMETER = "code"
+API_KEY_HEADER = "x-api-key"
 CRAWL_REQUEST_SCHEMA = {
     "requestBody": {
         "required": True,
@@ -196,7 +178,7 @@ def clean_request_url(request_url: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
 
 
-def authenticate(headers: Mapping[str, str], query: Mapping[str, str]) -> None:
+def authenticate(headers: Mapping[str, str]) -> None:
     """Require one of API_KEYS unless API_AUTH_DISABLED is explicitly set."""
     try:
         auth_disabled = boolean_setting("API_AUTH_DISABLED")
@@ -207,11 +189,9 @@ def authenticate(headers: Mapping[str, str], query: Mapping[str, str]) -> None:
     keys = [key.strip() for key in os.getenv("API_KEYS", "").split(",") if key.strip()]
     if not keys:
         raise ConfigurationError("API_KEYS must be set unless API_AUTH_DISABLED=true")
-    supplied = [headers.get(name) for name in API_KEY_HEADERS]
-    supplied.append(query.get(API_KEY_QUERY_PARAMETER))
-    for candidate in filter(None, supplied):
-        if any(hmac.compare_digest(candidate.encode(), key.encode()) for key in keys):
-            return
+    supplied = headers.get(API_KEY_HEADER)
+    if supplied and any(hmac.compare_digest(supplied.encode(), key.encode()) for key in keys):
+        return
     raise AuthenticationError("Missing or invalid API key")
 
 
@@ -487,7 +467,7 @@ async def healthz() -> dict[str, str]:
 async def start_crawl(request: Request) -> JSONResponse:
     """Start Firecrawl, wait for it to finish, then download attachments."""
     try:
-        authenticate(request.headers, request.query_params)
+        authenticate(request.headers)
         raw_body = await request.body()
     except Exception as exc:  # Converted to a stable HTTP contract in one place.
         return error_response(exc)
@@ -544,7 +524,7 @@ def run_crawl(request_url: str, raw_body: bytes) -> JSONResponse:
 def get_crawl_status(job_id: str, request: Request) -> JSONResponse:
     """Poll crawl progress and return discovered attachment links."""
     try:
-        authenticate(request.headers, request.query_params)
+        authenticate(request.headers)
         job_id = validate_job_id(job_id)
         params = request.query_params
         skip = parse_page_parameter(params.get("skip"), "skip", 0, 10_000_000)

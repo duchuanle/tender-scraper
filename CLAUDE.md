@@ -6,7 +6,7 @@ Guidance for AI agents working in this repository. User-facing setup, API contra
 
 A Python FastAPI service packaged as a generic Docker image (no cloud-vendor runtime dependency). `POST /api/crawl` takes a buy NSW tender link (often an Outlook Safe Link), resolves it, crawls the page with Firecrawl Cloud, polls **synchronously** until the crawl finishes, extracts a structured tender summary, downloads attachments, writes `summary.json` + `website.html`, optionally uploads everything to OneDrive, and returns compact JSON. The caller is an organisation-owned Copilot Studio / Power Automate flow.
 
-It is a working POC. It was originally an Azure Functions app; `x-functions-key` / `?code=` auth is still accepted for compatibility with that caller.
+It is a working POC. It was originally an Azure Functions app; that runtime and its `x-functions-key` / `?code=` auth have been removed.
 
 ## Module map
 
@@ -45,9 +45,9 @@ To exercise the container end to end, read the key from `.env` (`API_KEYS`) into
 - **Stable summary schema.** `name, agency, tenderID, category, closeDate, locations, type, description, contact, url` — always present, missing values are `""`, `url` is the resolved public URL.
 - **Fresh scrapes.** `build_crawl_payload` defaults `scrapeOptions.maxAge` to `0`. buy NSW attachment links are S3 pre-signed URLs valid for one hour; a Firecrawl cache hit returns expired links and every download fails with 403.
 - **Clean attachment filenames.** Files keep their original names so re-scrapes overwrite the stored copy (latest wins). Never derive names from the URL; a URL hash is only a same-crawl collision fallback.
-- **Auth fails closed.** No `API_KEYS` means `500 CONFIGURATION_ERROR`, never open access; only `API_AUTH_DISABLED=true` skips auth. Compare keys with `hmac.compare_digest`. Keep accepting `x-api-key`, `x-functions-key` and `?code=`. `/healthz` stays unauthenticated.
+- **Auth fails closed.** No `API_KEYS` means `500 CONFIGURATION_ERROR`, never open access; only `API_AUTH_DISABLED=true` skips auth. Compare keys with `hmac.compare_digest`. Keys arrive only in the `x-api-key` header — never accept them in the query string. `/healthz` stays unauthenticated.
 - **Errors go through `error_response`.** New failure modes get an exception type and a mapping there with an `errorCode` and `retryable`.
-- **No secrets in responses or logs** — API keys, Firecrawl key, OneDrive refresh token. `clean_request_url` strips the query so `?code=` is never echoed in responses, and `RedactApiKeyFilter` blanks it in uvicorn access logs. Do not echo upstream payloads that could contain request headers.
+- **No secrets in responses or logs** — API keys, Firecrawl key, OneDrive refresh token. `clean_request_url` strips the query so caller-supplied query strings are never echoed in `statusUrl`. Do not echo upstream payloads that could contain request headers.
 - **Responses via `json_response`.** It uses `CompatJSONResponse` (plain `json.dumps`, NaN tolerated) so odd upstream values never turn a processed crawl into a 500.
 - **`/healthz` stays `async def`** so it never queues behind blocking crawl threads.
 - **Vendor-neutral runtime.** No cloud-specific SDKs or runtime assumptions in the core path; OneDrive stays optional behind `ONEDRIVE_ENABLED`.
@@ -83,9 +83,9 @@ Before every commit, run `git status` and `git diff --cached` and check that not
 
 ## Open items
 
-1. Confirm the old Azure Function key exposed during earlier troubleshooting was rotated/retired; issue a fresh `API_KEYS` value for the new deployment.
+1. Issue a fresh `API_KEYS` value for the new deployment.
 2. Add TLS (reverse proxy) in front of the VPS deployment before exposing it publicly.
-3. Point the Power Automate HTTP action at the new host; optionally rename its header to `x-api-key`.
+3. Point the Power Automate HTTP action at the new host and send the key in the `x-api-key` header (`x-functions-key` is no longer accepted).
 4. Export the Copilot Studio / Power Automate workflow as a Power Platform solution for versioning.
 5. Decide on durable storage (S3-compatible / Blob) before SharePoint publishing; consider pruning old job folders on the volume.
 6. Move to a start/status or queue-based pattern if real crawls regularly approach 120 s.

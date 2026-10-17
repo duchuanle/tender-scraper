@@ -113,7 +113,7 @@ def test_start_handler_polls_until_complete_and_downloads(
     resolve_redirect_destination.return_value = "https://example.com/final"
 
     response = client.post(
-        "/api/crawl?code=do-not-echo",
+        "/api/crawl?trace=do-not-echo",
         headers=AUTH,
         json={"url": "https://example.com", "limit": 2},
     )
@@ -165,7 +165,7 @@ def test_status_handler_rewrites_secret_upstream_next_url(from_environment, clie
     }
     from_environment.return_value = firecrawl
 
-    response = client.get("/api/crawl/crawl-123?code=" + API_KEY)
+    response = client.get("/api/crawl/crawl-123?trace=do-not-echo", headers=AUTH)
     payload = response.json()
 
     assert response.status_code == 200
@@ -173,7 +173,7 @@ def test_status_handler_rewrites_secret_upstream_next_url(from_environment, clie
         "https://scraper.example.com/api/crawl/crawl-123?skip=10&pageLimit=25"
     )
     assert "api.firecrawl.dev" not in payload["next"]
-    assert API_KEY not in response.text
+    assert "do-not-echo" not in response.text
     assert payload["dataIncluded"] is False
     assert "data" not in payload
 
@@ -400,7 +400,8 @@ def test_firecrawl_error_does_not_echo_arbitrary_upstream_payload():
     [
         ({}, "/api/crawl"),
         ({"x-api-key": "wrong"}, "/api/crawl"),
-        ({}, "/api/crawl?code=wrong"),
+        ({"x-functions-key": API_KEY}, "/api/crawl"),
+        ({}, f"/api/crawl?code={API_KEY}"),
     ],
 )
 @patch("app.FirecrawlClient.from_environment")
@@ -412,25 +413,15 @@ def test_rejects_missing_or_invalid_api_key(from_environment, client, headers, p
     from_environment.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "headers, path",
-    [
-        ({"x-api-key": API_KEY}, "/api/crawl/crawl-123"),
-        ({"x-functions-key": API_KEY}, "/api/crawl/crawl-123"),
-        ({}, f"/api/crawl/crawl-123?code={API_KEY}"),
-    ],
-)
 @patch("app.FirecrawlClient.from_environment")
-def test_accepts_api_key_header_legacy_header_and_query(
-    from_environment, client, headers, path
-):
+def test_accepts_api_key_header(from_environment, client):
     from_environment.return_value.get_crawl_status.return_value = {
         "success": True,
         "status": "scraping",
         "data": [],
     }
 
-    response = client.get(path, headers=headers)
+    response = client.get("/api/crawl/crawl-123", headers={"x-api-key": API_KEY})
 
     assert response.status_code == 200
 
@@ -478,28 +469,6 @@ def test_json_response_tolerates_nan_from_upstream():
 
     assert response.status_code == 200
     assert response.body == b'{"score": NaN}'
-
-
-def test_access_log_filter_redacts_query_api_key():
-    record = service.logging.LogRecord(
-        "uvicorn.access",
-        service.logging.INFO,
-        __file__,
-        1,
-        '%s - "%s %s HTTP/%s" %d',
-        ("127.0.0.1:5000", "GET", "/api/crawl/abc?skip=1&code=SECRET&x=2", "1.1", 200),
-        None,
-    )
-
-    assert service.RedactApiKeyFilter().filter(record) is True
-    message = record.getMessage()
-    assert "SECRET" not in message
-    assert "?skip=1&code=[redacted]&x=2" in message
-
-
-def test_access_log_filter_is_installed():
-    filters = service.logging.getLogger("uvicorn.access").filters
-    assert any(isinstance(item, service.RedactApiKeyFilter) for item in filters)
 
 
 def test_unknown_log_level_falls_back_to_info(monkeypatch, caplog):

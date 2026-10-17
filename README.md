@@ -158,10 +158,7 @@ All settings are environment variables (`.env` for Docker Compose and local runs
 
 ### Authentication
 
-`/api/*` routes require one of the `API_KEYS`, sent as:
-
-- `x-api-key: <key>` header (preferred), or
-- `x-functions-key: <key>` header, or `?code=<key>` query parameter — accepted so callers written for the earlier Azure Functions version keep working unchanged. `code=` values are redacted from access logs, but prefer a header.
+`/api/*` routes require one of the `API_KEYS`, sent in the `x-api-key: <key>` header. Keys in the query string are not accepted.
 
 `GET /healthz`, `/docs` and `/openapi.json` are public.
 
@@ -332,7 +329,7 @@ Method:         POST
 URI:            https://<your-host>/api/crawl
 Authentication: None
 Headers:        Content-Type: application/json
-                x-api-key: <API_KEY>          (x-functions-key also works)
+                x-api-key: <API_KEY>
 Body:           {"url": "@{outputs('Extract_protected_URL')}", "limit": 1}
 ```
 
