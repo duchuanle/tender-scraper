@@ -11,7 +11,7 @@ from urllib.parse import quote
 
 import requests
 
-from settings import boolean_setting
+from .settings import boolean_setting
 
 
 GRAPH_ROOT = "https://graph.microsoft.com/v1.0"

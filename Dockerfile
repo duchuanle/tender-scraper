@@ -15,8 +15,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-COPY app.py firecrawl_client.py attachment_links.py attachment_downloader.py \
-     tender_artifacts.py onedrive_client.py settings.py ./
+COPY tender_scraper ./tender_scraper
 
 RUN useradd --create-home --uid 10001 app \
     && mkdir -p /data/downloads \
@@ -31,4 +30,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 # --proxy-headers takes the scheme (X-Forwarded-Proto) and client IP from a reverse proxy;
 # the host in statusUrl/next comes from the Host header the proxy forwards.
-CMD ["sh", "-c", "exec uvicorn app:app --host 0.0.0.0 --port ${PORT} --proxy-headers --timeout-keep-alive 75"]
+CMD ["sh", "-c", "exec uvicorn tender_scraper.app:app --host 0.0.0.0 --port ${PORT} --proxy-headers --timeout-keep-alive 75"]

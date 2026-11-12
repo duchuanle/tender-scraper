@@ -46,7 +46,7 @@ def main() -> int:
             refresh_token = token.get("refresh_token")
             if not refresh_token:
                 raise RuntimeError("No refresh token returned; offline_access was not granted")
-            print("\nONEDRIVE_REFRESH_TOKEN (store this as an Azure app setting):\n")
+            print("\nONEDRIVE_REFRESH_TOKEN (store this as a deployment secret):\n")
             print(refresh_token)
             return 0
 

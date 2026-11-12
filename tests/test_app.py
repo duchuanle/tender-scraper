@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-import app as service
+from tender_scraper import app as service
 
 API_KEY = "test-api-key"
 AUTH = {"x-api-key": API_KEY}
@@ -50,10 +50,10 @@ def mock_onedrive_upload(monkeypatch):
     return uploader
 
 
-@patch("app.resolve_redirect_destination")
-@patch("app.download_attachments")
-@patch("app.time")
-@patch("app.FirecrawlClient.from_environment")
+@patch("tender_scraper.app.resolve_redirect_destination")
+@patch("tender_scraper.app.download_attachments")
+@patch("tender_scraper.app.time")
+@patch("tender_scraper.app.FirecrawlClient.from_environment")
 def test_start_handler_polls_until_complete_and_downloads(
     from_environment,
     time_module,
@@ -154,7 +154,7 @@ def test_start_handler_polls_until_complete_and_downloads(
     )
 
 
-@patch("app.FirecrawlClient.from_environment")
+@patch("tender_scraper.app.FirecrawlClient.from_environment")
 def test_status_handler_rewrites_secret_upstream_next_url(from_environment, client):
     firecrawl = Mock()
     firecrawl.get_crawl_status.return_value = {
@@ -178,8 +178,8 @@ def test_status_handler_rewrites_secret_upstream_next_url(from_environment, clie
     assert "data" not in payload
 
 
-@patch("app.download_attachments")
-@patch("app.FirecrawlClient.from_environment")
+@patch("tender_scraper.app.download_attachments")
+@patch("tender_scraper.app.FirecrawlClient.from_environment")
 def test_completed_status_returns_attachment_links(
     from_environment,
     download_attachments,
@@ -240,7 +240,7 @@ def test_completed_status_returns_attachment_links(
     )
 
 
-@patch("app.FirecrawlClient.from_environment")
+@patch("tender_scraper.app.FirecrawlClient.from_environment")
 def test_raw_data_is_opt_in(from_environment, client):
     firecrawl = Mock()
     firecrawl.get_crawl_status.return_value = {
@@ -258,8 +258,8 @@ def test_raw_data_is_opt_in(from_environment, client):
     assert payload["data"][0]["markdown"] == "raw page"
 
 
-@patch("app.download_attachments")
-@patch("app.FirecrawlClient.from_environment")
+@patch("tender_scraper.app.download_attachments")
+@patch("tender_scraper.app.FirecrawlClient.from_environment")
 def test_completed_status_collects_attachments_from_all_result_pages(
     from_environment,
     download_attachments,
@@ -329,9 +329,9 @@ def test_start_handler_rejects_invalid_json(client):
     assert response.json()["errorCode"] == "INVALID_REQUEST"
 
 
-@patch("app.resolve_redirect_destination", return_value="https://example.com")
-@patch("app.time")
-@patch("app.FirecrawlClient.from_environment")
+@patch("tender_scraper.app.resolve_redirect_destination", return_value="https://example.com")
+@patch("tender_scraper.app.time")
+@patch("tender_scraper.app.FirecrawlClient.from_environment")
 def test_start_handler_returns_timeout_when_crawl_does_not_finish(
     from_environment,
     time_module,
@@ -362,7 +362,7 @@ def test_start_handler_returns_timeout_when_crawl_does_not_finish(
     assert payload["retryable"] is True
 
 
-@patch("app.time")
+@patch("tender_scraper.app.time")
 def test_internal_polling_retries_transient_rate_limit(time_module):
     time_module.monotonic.side_effect = [0.0, 0.0, 1.0]
     firecrawl = Mock()
@@ -404,7 +404,7 @@ def test_firecrawl_error_does_not_echo_arbitrary_upstream_payload():
         ({}, f"/api/crawl?code={API_KEY}"),
     ],
 )
-@patch("app.FirecrawlClient.from_environment")
+@patch("tender_scraper.app.FirecrawlClient.from_environment")
 def test_rejects_missing_or_invalid_api_key(from_environment, client, headers, path):
     response = client.post(path, headers=headers, json={"url": "https://example.com"})
 
@@ -413,7 +413,7 @@ def test_rejects_missing_or_invalid_api_key(from_environment, client, headers, p
     from_environment.assert_not_called()
 
 
-@patch("app.FirecrawlClient.from_environment")
+@patch("tender_scraper.app.FirecrawlClient.from_environment")
 def test_accepts_api_key_header(from_environment, client):
     from_environment.return_value.get_crawl_status.return_value = {
         "success": True,
@@ -435,7 +435,7 @@ def test_missing_api_keys_fails_closed(client, monkeypatch):
     assert response.json()["errorCode"] == "CONFIGURATION_ERROR"
 
 
-@patch("app.FirecrawlClient.from_environment")
+@patch("tender_scraper.app.FirecrawlClient.from_environment")
 def test_auth_can_be_disabled_explicitly(from_environment, client, monkeypatch):
     monkeypatch.delenv("API_KEYS")
     monkeypatch.setenv("API_AUTH_DISABLED", "true")

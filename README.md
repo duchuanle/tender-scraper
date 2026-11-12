@@ -16,7 +16,7 @@ The service is vendor-neutral: the same Docker image can run on Railway, a VPS, 
 > [!CAUTION]
 > **Never commit secrets.** Keep `.env`, Firecrawl keys, API keys, OneDrive refresh tokens, private keys, credential exports and `local.settings.json` out of Git. Only `.env.example`, containing placeholders, belongs in the repository. If a real secret has ever been committed, removing the file is not enough: rotate the secret immediately and remove it from Git history.
 
-![Tender scraping POC architecture](tender-scraping-poc-process.png)
+![Tender scraping POC architecture](docs/assets/tender-scraping-poc-process.png)
 
 ## Contents
 
@@ -36,14 +36,14 @@ The service is vendor-neutral: the same Docker image can run on Railway, a VPS, 
 
 | Path | Responsibility |
 | --- | --- |
-| `app.py` | FastAPI app: routes, API-key auth, request validation, synchronous polling, orchestration, response contract, error mapping. |
-| `settings.py` | Shared environment-setting parsers. |
-| `firecrawl_client.py` | URL validation, Safe Link / tracking-link resolution, Firecrawl payloads, API calls, result pagination. |
-| `attachment_links.py` | Finds and deduplicates likely attachment URLs in Firecrawl documents. |
-| `attachment_downloader.py` | Streams attachments into a traversal-safe job folder; returns size and SHA-256 per file. |
-| `tender_artifacts.py` | Extraction schema, summary normalisation, primary-page selection, writes `summary.json` and `website.html`. |
-| `onedrive_client.py` | Optional OneDrive upload: delegated token refresh, folder creation, replace-by-name via Microsoft Graph. |
-| `scripts/get_onedrive_refresh_token.py` | One-time device-code login helper for OneDrive (local only). |
+| `tender_scraper/app.py` | FastAPI app: routes, API-key auth, request validation, synchronous polling, orchestration, response contract, error mapping. |
+| `tender_scraper/settings.py` | Shared environment-setting parsers. |
+| `tender_scraper/firecrawl_client.py` | URL validation, Safe Link / tracking-link resolution, Firecrawl payloads, API calls, result pagination. |
+| `tender_scraper/attachment_links.py` | Finds and deduplicates likely attachment URLs in Firecrawl documents. |
+| `tender_scraper/attachment_downloader.py` | Streams attachments into a traversal-safe job folder; returns size and SHA-256 per file. |
+| `tender_scraper/tender_artifacts.py` | Extraction schema, summary normalisation, primary-page selection, writes `summary.json` and `website.html`. |
+| `tender_scraper/onedrive_client.py` | Optional OneDrive upload: delegated token refresh, folder creation, replace-by-name via Microsoft Graph. |
+| `tools/get_onedrive_refresh_token.py` | One-time device-code login helper for OneDrive (local only). |
 | `tests/` | pytest unit tests for every module (all network calls mocked). |
 | `Dockerfile`, `docker-compose.yml`, `.env.example` | Container image and single-host deployment. |
 
@@ -76,7 +76,7 @@ Requires Python 3.12 (3.10+ works).
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 Copy-Item .env.example .env      # set FIRECRAWL_API_KEY, API_KEYS (or API_AUTH_DISABLED=true), DOWNLOAD_DIR=downloads
-.\.venv\Scripts\python.exe -m uvicorn app:app --env-file .env --reload --port 8000
+.\.venv\Scripts\python.exe -m uvicorn tender_scraper.app:app --env-file .env --reload --port 8000
 ```
 
 ## Publishing safely to GitHub
@@ -370,7 +370,7 @@ The current POC destination is a personal OneDrive, using delegated Graph access
 4. Run the login helper with the Application (client) ID:
 
    ```powershell
-   .\.venv\Scripts\python.exe scripts\get_onedrive_refresh_token.py <CLIENT_ID>
+   .\.venv\Scripts\python.exe tools\get_onedrive_refresh_token.py <CLIENT_ID>
    ```
 
 5. Complete the device login with the target account and copy the refresh token. Do not share or commit it.

@@ -1,7 +1,7 @@
 import hashlib
 from unittest.mock import Mock
 
-from attachment_downloader import download_attachments
+from tender_scraper.attachment_downloader import download_attachments
 
 
 def make_response(content: bytes):

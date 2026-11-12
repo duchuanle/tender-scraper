@@ -1,6 +1,6 @@
 import pytest
 
-from settings import boolean_setting
+from tender_scraper.settings import boolean_setting
 
 
 @pytest.mark.parametrize("value", ["true", "TRUE", " 1 ", "yes"])

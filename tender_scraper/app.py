@@ -14,9 +14,9 @@ from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
-from attachment_downloader import download_attachments
-from attachment_links import extract_attachment_links
-from firecrawl_client import (
+from .attachment_downloader import download_attachments
+from .attachment_links import extract_attachment_links
+from .firecrawl_client import (
     ConfigurationError,
     FirecrawlAPIError,
     FirecrawlClient,
@@ -28,9 +28,9 @@ from firecrawl_client import (
     resolve_redirect_destination,
     validate_job_id,
 )
-from onedrive_client import upload_job_outputs
-from settings import boolean_setting
-from tender_artifacts import (
+from .onedrive_client import upload_job_outputs
+from .settings import boolean_setting
+from .tender_artifacts import (
     extract_tender_summary,
     save_crawl_artifacts,
     select_primary_document,

@@ -1,4 +1,4 @@
-from attachment_links import extract_attachment_links, is_attachment_url
+from tender_scraper.attachment_links import extract_attachment_links, is_attachment_url
 
 
 def test_identifies_common_attachment_extensions_with_query_strings():

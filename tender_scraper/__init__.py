@@ -1,0 +1,1 @@
+"""Tender scraper service package."""

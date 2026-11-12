@@ -82,6 +82,8 @@ Desktop.ini
 # -----------------------------------------------------------------------------
 # Local agent/planning artifacts — repository guidance says not to commit these
 # -----------------------------------------------------------------------------
+AGENTS.md
+CLAUDE.md
 .superpowers/
 docs/superpowers/
 *-plan.md

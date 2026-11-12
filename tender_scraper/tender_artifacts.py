@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 from urllib.parse import urlsplit, urlunsplit
 
-from attachment_downloader import get_job_output_folder
+from .attachment_downloader import get_job_output_folder
 
 
 TENDER_FIELDS = (

@@ -1,6 +1,6 @@
 import json
 
-from tender_artifacts import (
+from tender_scraper.tender_artifacts import (
     TENDER_FIELDS,
     extract_tender_summary,
     save_crawl_artifacts,

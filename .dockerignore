@@ -8,7 +8,7 @@ __pycache__/
 local.settings.json
 requirements-dev.txt
 tests/
-scripts/
+tools/
 downloads/
 data/
 *.md

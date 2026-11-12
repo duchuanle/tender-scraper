@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from firecrawl_client import (
+from tender_scraper.firecrawl_client import (
     ConfigurationError,
     FirecrawlAPIError,
     FirecrawlClient,

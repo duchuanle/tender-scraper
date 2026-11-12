@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urljoin, urlsplit
 
 import requests
 
-from tender_artifacts import TENDER_JSON_FORMAT
+from .tender_artifacts import TENDER_JSON_FORMAT
 
 
 DEFAULT_API_URL = "https://api.firecrawl.dev"

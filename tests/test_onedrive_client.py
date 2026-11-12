@@ -1,7 +1,7 @@
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import onedrive_client
+from tender_scraper import onedrive_client
 
 
 def test_upload_is_disabled_by_default(monkeypatch):
@@ -23,7 +23,7 @@ def test_missing_personal_onedrive_configuration_is_reported(monkeypatch):
     assert result["files"] == []
 
 
-@patch("onedrive_client.OneDriveClient.from_environment")
+@patch("tender_scraper.onedrive_client.OneDriveClient.from_environment")
 def test_uploads_summary_html_and_downloaded_attachments(
     from_environment,
     monkeypatch,
