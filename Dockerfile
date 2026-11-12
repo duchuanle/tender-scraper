@@ -22,7 +22,9 @@ RUN useradd --create-home --uid 10001 app \
     && chown -R app:app /data
 USER app
 
-VOLUME ["/data"]
+# Local Docker persistence is provided by docker-compose.yml (`scraper-data:/data`).
+# Railway persistence must use a Railway-managed volume mounted at /data.
+# VOLUME ["/data"]  # Unsupported by Railway; kept as a historical local note.
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

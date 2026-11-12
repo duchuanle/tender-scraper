@@ -146,7 +146,13 @@ Railway detects the root `Dockerfile`, builds it, injects `PORT`, and runs the i
 6. Choose a storage model:
 
    - **POC / OneDrive as destination:** do not attach a volume. Files under `/data` are ephemeral and may disappear after a redeploy or restart.
-   - **Persist local job folders:** attach one Railway volume at `/data`. Railway volumes are mounted as root while this image normally runs as UID `10001`; set `RAILWAY_RUN_UID=0` if Railway reports permission errors. This workaround runs the application as root, so prefer external durable storage for a hardened production deployment. Keep the service at one replica when using a volume.
+   - **Persist local job folders:** on the Railway project canvas, right-click the service, select **Attach Volume**, and use `/data` as the mount path. Railway volumes are mounted as root while this image normally runs as UID `10001`; set `RAILWAY_RUN_UID=0` if Railway reports permission errors. This workaround runs the application as root, so prefer external durable storage for a hardened production deployment. Keep the service at one replica when using a volume.
+
+   The Dockerfile deliberately does not declare an active `VOLUME` instruction because Railway does not support it. Local Docker Compose continues to use the named `scraper-data` volume. The equivalent Railway CLI command is:
+
+   ```bash
+   railway volume add --mount-path /data --service <service-name>
+   ```
 
 7. Deploy and wait for `/healthz` to pass. Railway will automatically redeploy when new commits reach the connected branch if GitHub autodeploy is enabled.
 8. Verify the public service:
