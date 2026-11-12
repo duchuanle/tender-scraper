@@ -1,15 +1,88 @@
-.venv/
-__pycache__/
-*.py[cod]
-.pytest_cache/
+# -----------------------------------------------------------------------------
+# Secrets and local configuration — never commit real credentials
+# -----------------------------------------------------------------------------
 .env
-downloads/
-data/
-# Legacy Azure Functions settings file; may still exist locally with secrets.
-local.settings.json
 .env.*
 !.env.example
-# Planning documents (specs, plans, brainstorming) stay local.
+.envrc
+.direnv/
+local.settings.json
+
+# Credential exports, service-account files and private keys
+credentials*.json
+service-account*.json
+client_secret*.json
+secrets*.json
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+.netrc
+.pypirc
+
+# Cloud/provider credentials accidentally copied into the repository
+.aws/
+.azure/
+.config/gcloud/
+
+# -----------------------------------------------------------------------------
+# Python environments, caches, coverage and build outputs
+# -----------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# -----------------------------------------------------------------------------
+# Generated scraper data and temporary files
+# -----------------------------------------------------------------------------
+downloads/
+data/
+tmp/
+temp/
+*.tmp
+*.temp
+*.part
+
+# Logs and local process state
+*.log
+logs/
+*.pid
+*.pid.lock
+
+# -----------------------------------------------------------------------------
+# Editors and operating systems
+# -----------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# -----------------------------------------------------------------------------
+# Local agent/planning artifacts — repository guidance says not to commit these
+# -----------------------------------------------------------------------------
+.superpowers/
 docs/superpowers/
 *-plan.md
 *-spec.md

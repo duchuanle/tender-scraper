@@ -1,6 +1,8 @@
 # Tender Scraper
 
-A small Python web service (FastAPI, packaged as a Docker image) that turns a buy NSW tender email link into a saved tender package. One HTTP call:
+A Docker-ready FastAPI service that turns a buy NSW tender email link into a saved tender package. It is designed for an organisation-owned Copilot Studio or Power Automate flow, but the HTTP API can be called by any authorised client.
+
+One request:
 
 1. resolves an Outlook Safe Link or buy NSW tracking link to the public opportunity page,
 2. crawls it with [Firecrawl](https://firecrawl.dev) and waits for the crawl to finish,
@@ -9,7 +11,10 @@ A small Python web service (FastAPI, packaged as a Docker image) that turns a bu
 5. optionally uploads the package to OneDrive, and
 6. returns a compact JSON result suitable for Copilot Studio and Power Automate.
 
-It is not tied to any cloud: the same image runs on a VPS, Azure (Container Apps, App Service, VM), AWS, GCP or a laptop. It is called from an organisation-owned Copilot Studio / Power Automate flow.
+The service is vendor-neutral: the same Docker image can run on Railway, a VPS, Azure, AWS, GCP or a laptop. `POST /api/crawl` waits synchronously for Firecrawl, downloads the resulting files, optionally uploads them to OneDrive, and returns a compact response.
+
+> [!CAUTION]
+> **Never commit secrets.** Keep `.env`, Firecrawl keys, API keys, OneDrive refresh tokens, private keys, credential exports and `local.settings.json` out of Git. Only `.env.example`, containing placeholders, belongs in the repository. If a real secret has ever been committed, removing the file is not enough: rotate the secret immediately and remove it from Git history.
 
 ![Tender scraping POC architecture](tender-scraping-poc-process.png)
 
@@ -17,6 +22,7 @@ It is not tied to any cloud: the same image runs on a VPS, Azure (Container Apps
 
 - [Project layout](#project-layout)
 - [Quick start](#quick-start)
+- [Publishing safely to GitHub](#publishing-safely-to-github)
 - [Deploying](#deploying)
 - [Configuration](#configuration)
 - [API](#api)
@@ -73,9 +79,91 @@ Copy-Item .env.example .env      # set FIRECRAWL_API_KEY, API_KEYS (or API_AUTH_
 .\.venv\Scripts\python.exe -m uvicorn app:app --env-file .env --reload --port 8000
 ```
 
+## Publishing safely to GitHub
+
+The repository `.gitignore` excludes local environment files, credential exports, private keys, Python caches, generated downloads, logs, editor metadata and local planning artifacts. `.env.example` is deliberately allowed because it contains placeholders rather than working credentials.
+
+Before the first push and before every pull request, review exactly what Git will upload:
+
+```bash
+git status --short
+git ls-files -- ".env" ".env.*" "local.settings.json"
+git diff --cached
+```
+
+The `git ls-files` command above should print only `.env.example`. If it prints `.env`, another environment file, or `local.settings.json`, stop and untrack the reported file before pushing:
+
+```bash
+git rm --cached -- path/to/secret-file
+```
+
+Then rotate any exposed credential, even if the repository is private. `.gitignore` prevents new untracked files from being added; it does not remove files that Git already tracks.
+
+For a new GitHub repository:
+
+```bash
+git add .
+git diff --cached
+git commit -m "chore: prepare tender scraper deployment"
+git branch -M main
+git remote add origin https://github.com/<organisation>/<repository>.git
+git push -u origin main
+```
+
+Do not paste secrets into the README, Dockerfile, Compose file, commit messages or GitHub Actions workflow. Store deployment secrets in Railway's Variables panel.
+
 ## Deploying
 
 The image listens on `PORT` (default `8000`), stores outputs under `/data`, exposes `GET /healthz` for health checks and runs as a non-root user. Anything that runs a container can host it.
+
+### Railway from a GitHub repository
+
+Railway detects the root `Dockerfile`, builds it, injects `PORT`, and runs the image command. No Railway-specific start command is required.
+
+1. Push the reviewed repository to GitHub using the checks in [Publishing safely to GitHub](#publishing-safely-to-github).
+2. In Railway, select **New Project → Deploy from GitHub repo**, connect GitHub if needed, and select this repository and the `main` branch.
+3. In the service **Variables** panel, add:
+
+   ```text
+   API_KEYS=<new-long-random-key>
+   FIRECRAWL_API_KEY=<your-Firecrawl-key>
+   FIRECRAWL_POLL_TIMEOUT_SECONDS=75
+   ```
+
+   `API_KEYS` and `FIRECRAWL_API_KEY` are secrets. Generate a fresh API key for the deployment and do not reuse one that has appeared in a committed file, shared log or message. Do not set `PORT`; Railway supplies it and the Docker command already consumes it.
+
+   To enable OneDrive, also set:
+
+   ```text
+   ONEDRIVE_ENABLED=true
+   ONEDRIVE_CLIENT_ID=<public-client-application-id>
+   ONEDRIVE_REFRESH_TOKEN=<delegated-refresh-token>
+   ONEDRIVE_FOLDER=Scraper Function
+   ```
+
+4. In the service settings, configure the health-check path as `/healthz`.
+5. Under **Networking**, generate a Railway domain or attach a custom domain. Railway terminates TLS for the public domain.
+6. Choose a storage model:
+
+   - **POC / OneDrive as destination:** do not attach a volume. Files under `/data` are ephemeral and may disappear after a redeploy or restart.
+   - **Persist local job folders:** attach one Railway volume at `/data`. Railway volumes are mounted as root while this image normally runs as UID `10001`; set `RAILWAY_RUN_UID=0` if Railway reports permission errors. This workaround runs the application as root, so prefer external durable storage for a hardened production deployment. Keep the service at one replica when using a volume.
+
+7. Deploy and wait for `/healthz` to pass. Railway will automatically redeploy when new commits reach the connected branch if GitHub autodeploy is enabled.
+8. Verify the public service:
+
+   ```bash
+   curl https://<railway-domain>/healthz
+   # Expected: {"status":"ok"}
+
+   curl -X POST https://<railway-domain>/api/crawl \
+     -H "Content-Type: application/json" \
+     -H "x-api-key: <API_KEY>" \
+     -d '{"url":"https://buy.nsw.gov.au/prcOpportunity/...","limit":1}'
+   ```
+
+   A real crawl consumes Firecrawl credits. Use `limit: 1`, inspect the Railway deployment logs, and confirm `status`, `downloads.status`, and—when enabled—`oneDrive.status` are all `completed`.
+
+Power Automate allows 120 seconds for the synchronous HTTP request. Keep `FIRECRAWL_POLL_TIMEOUT_SECONDS=75` so a slow crawl returns a controlled `504` with recovery information before the caller times out. Downloads and OneDrive uploads also consume part of the 120-second window.
 
 ### VPS with Docker Compose
 
@@ -388,3 +476,7 @@ This decouples scraping from the publishing target, removes the long-held HTTP r
 - [Azure Container Apps: `az containerapp up`](https://learn.microsoft.com/azure/container-apps/containerapp-up)
 - [Microsoft identity device authorization grant](https://learn.microsoft.com/entra/identity-platform/v2-oauth2-device-code)
 - [Upload small files to OneDrive](https://learn.microsoft.com/graph/api/driveitem-put-content)
+- [Railway: Dockerfiles](https://docs.railway.com/builds/dockerfiles)
+- [Railway: deployment health checks](https://docs.railway.com/deployments/healthchecks)
+- [Railway: persistent volumes](https://docs.railway.com/volumes)
+- [Railway: GitHub autodeploys](https://docs.railway.com/deployments/github-autodeploys)
